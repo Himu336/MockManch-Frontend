@@ -9,19 +9,19 @@ import Notification from "../../../components/ui/Notification";
 import { createRoom, joinRoom } from "../../../lib/api";
 import { useRouter } from "next/navigation";
 
-/**
- * NOTE: using static test user for now (you said userId = "test-user-123")
- * Replace setUserId(...) with real auth session in production.
- */
 export default function GroupPracticePageClient() {
   const router = useRouter();
 
   const [createLoading, setCreateLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState(false);
-  const [userId] = useState<string>("test-user-123"); // <--- static test uid
+
+  // 🔥🔥 USER CAN ENTER THEIR OWN ID NOW (this fixes multi-user)
+  const [userId, setUserId] = useState<string>("");
+
   const [maxParticipants, setMaxParticipants] = useState<string>("");
   const [roomName, setRoomName] = useState<string>("");
   const [roomCode, setRoomCode] = useState<string>("");
+
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -47,22 +47,35 @@ export default function GroupPracticePageClient() {
   ];
 
   async function handleCreateRoom() {
-    setError(null);
-    setSuccessMsg(null);
-    setCreateLoading(true);
+  setError(null);
+  setSuccessMsg(null);
+
+  if (!userId) {
+    setError("Please enter your User ID before creating a room.");
+    return;
+  }
+
+  setCreateLoading(true);
+
     try {
       const res = await createRoom(userId);
-      console.log("CREATE ROOM RESPONSE:", res); // debug
-      setSuccessMsg("Room created — joining now...");
 
-      // Push uid into query so frontend uses string UID (must match backend user account token)
-      router.push(
-        `/video-room/${encodeURIComponent(res.room.agoraChannel)}?token=${encodeURIComponent(
-          res.agora_token
-        )}&appId=${encodeURIComponent(res.agora_app_id)}&roomId=${encodeURIComponent(
-          res.room.id
-        )}&uid=${encodeURIComponent(userId)}`
-      );
+      // Use channel field returned by backend for Agora
+      const channel = res.channel;
+      
+      console.log("Create room response:", res);
+      console.log("Navigating to:", channel, "with token:", res.agora_token);
+
+      // Create URL with proper query string
+      const url = new URL(`/video-room/${channel}`, window.location.origin);
+      url.searchParams.set("token", res.agora_token);
+      url.searchParams.set("appId", res.agora_app_id);
+      url.searchParams.set("roomId", res.room.id);
+      url.searchParams.set("hostId", res.room.hostId || userId);
+      url.searchParams.set("uid", userId);
+
+      router.push(url.pathname + url.search);
+
     } catch (err: any) {
       setError(err.message || "Unknown error creating room");
     } finally {
@@ -70,32 +83,49 @@ export default function GroupPracticePageClient() {
     }
   }
 
-  async function handleJoinRoom() {
-    setError(null);
-    setSuccessMsg(null);
-    if (!roomCode) {
-      setError("Please enter a room code to join.");
-      return;
-    }
-    setJoinLoading(true);
+
+async function handleJoinRoom() {
+  setError(null);
+  setSuccessMsg(null);
+
+  if (!userId) {
+    setError("Please enter your User ID before joining.");
+    return;
+  }
+
+  if (!roomCode) {
+    setError("Please enter a room code to join.");
+    return;
+  }
+
+  setJoinLoading(true);
+
     try {
       const res = await joinRoom(userId, roomCode);
-      console.log("JOIN ROOM RESPONSE:", res); // debug
-      setSuccessMsg("Joined room — opening video room...");
 
-      router.push(
-        `/video-room/${encodeURIComponent(res.room.agoraChannel)}?token=${encodeURIComponent(
-          res.agora_token
-        )}&appId=${encodeURIComponent(res.agora_app_id)}&roomId=${encodeURIComponent(
-          res.room.id
-        )}&uid=${encodeURIComponent(userId)}`
-      );
+      // Use channel field returned by backend for Agora
+      const channel = res.channel;
+
+      console.log("Join room response:", res);
+      console.log("Navigating to:", channel, "with token:", res.agora_token);
+
+      // Create URL with proper query string
+      const url = new URL(`/video-room/${channel}`, window.location.origin);
+      url.searchParams.set("token", res.agora_token);
+      url.searchParams.set("appId", res.agora_app_id);
+      url.searchParams.set("roomId", res.room.id);
+      url.searchParams.set("hostId", res.room.hostId);
+      url.searchParams.set("uid", userId);
+
+      router.push(url.pathname + url.search);
+
     } catch (err: any) {
       setError(err.message || "Unknown error joining room");
     } finally {
       setJoinLoading(false);
     }
   }
+
 
   return (
     <div className="space-y-8">
@@ -106,6 +136,20 @@ export default function GroupPracticePageClient() {
 
       {error && <Notification type="error">{error}</Notification>}
       {successMsg && <Notification type="success">{successMsg}</Notification>}
+
+      {/* USER ID INPUT — 🔥 new block */}
+      <Card>
+        <h2 className="text-lg font-semibold mb-3">Your Identity</h2>
+        <p className="text-sm text-white/60 mb-4">
+          Enter your user ID before you create or join rooms
+        </p>
+
+        <Input
+          placeholder="Enter your user ID (e.g., test-user-123)"
+          value={userId}
+          onChange={(e) => setUserId(e.target.value)}
+        />
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Create Room */}
@@ -176,15 +220,23 @@ export default function GroupPracticePageClient() {
               <Button
                 size="sm"
                 onClick={async () => {
+                  if (!userId) {
+                    setError("Please enter your User ID first.");
+                    return;
+                  }
+
                   try {
                     const res = await createRoom(userId);
-                    router.push(
-                      `/video-room/${encodeURIComponent(res.room.agoraChannel)}?token=${encodeURIComponent(
-                        res.agora_token
-                      )}&appId=${encodeURIComponent(res.agora_app_id)}&roomId=${encodeURIComponent(
-                        res.room.id
-                      )}&uid=${encodeURIComponent(userId)}`
-                    );
+                    const channel = res.channel;
+                    
+                    const url = new URL(`/video-room/${channel}`, window.location.origin);
+                    url.searchParams.set("token", res.agora_token);
+                    url.searchParams.set("appId", res.agora_app_id);
+                    url.searchParams.set("roomId", res.room.id);
+                    url.searchParams.set("hostId", res.room.hostId || userId);
+                    url.searchParams.set("uid", userId);
+                    
+                    router.push(url.pathname + url.search);
                   } catch (err: any) {
                     setError(err.message || "Failed to join session");
                   }

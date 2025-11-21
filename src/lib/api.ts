@@ -6,11 +6,11 @@ export type CreateRoomResp = {
   room: {
     id: string;
     hostId: string;
-    agoraChannel: string;
     createdAt: string;
   };
   agora_app_id: string;
   agora_token: string;
+  channel: string; // Agora channel name returned by backend
 };
 
 export async function createRoom(userId: string) : Promise<CreateRoomResp> {
@@ -36,7 +36,7 @@ export async function createRoom(userId: string) : Promise<CreateRoomResp> {
  * passing both user_id and room_id to join an existing room.
  */
 export async function joinRoom(userId: string, roomId: string) : Promise<CreateRoomResp> {
-  const res = await fetch(`${BASE}/api/v1/room/create`, {
+  const res = await fetch(`${BASE}/api/v1/room/join`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ user_id: userId, room_id: roomId }),
