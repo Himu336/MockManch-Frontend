@@ -49,3 +49,32 @@ export async function joinRoom(userId: string, roomId: string) : Promise<CreateR
   const data = await res.json();
   return data as CreateRoomResp;
 }
+
+export type RAGResponse = {
+  success: boolean;
+  data: {
+    ai_text: string;
+  };
+};
+
+export async function sendMessageToCoach(
+  message: string,
+  userId: string
+): Promise<RAGResponse> {
+  const res = await fetch(`${BASE}/api/v1/rag`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: message,
+      user_id: userId,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`AI Coach request failed: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  return data as RAGResponse;
+}
