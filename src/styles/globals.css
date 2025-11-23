@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Custom colors */
+@theme {
+  --color-accent-blue: #3b82f6;
+}
+
 /* Force dark mode */
 html,
 body {
