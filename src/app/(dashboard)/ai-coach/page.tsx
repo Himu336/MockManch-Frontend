@@ -1,9 +1,15 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Zap, Send, Bot, Loader2 } from "lucide-react";
+import { Zap, Send, Bot, Loader2, AlertCircle, Coins, CreditCard } from "lucide-react";
 import Input from "../../../components/ui/Input";
-import { sendMessageToCoach } from "../../../lib/api";
+import Button from "../../../components/ui/Button";
+import Card from "../../../components/ui/Card";
+import { sendMessageToCoach, type RAGError } from "../../../lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { useWallet } from "@/hooks/useWallet";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 interface Message {
   id: string;
@@ -13,8 +19,10 @@ interface Message {
 }
 
 export default function AiCoachPage() {
-  // TODO: Replace with actual user ID from auth/session
-  const userId = "test_user_8";
+  const { user } = useAuth();
+  const { balance, fetchWallet } = useWallet();
+  const router = useRouter();
+  const userId = user?.id || "";
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -28,6 +36,7 @@ export default function AiCoachPage() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [insufficientTokens, setInsufficientTokens] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -53,6 +62,7 @@ export default function AiCoachPage() {
     setInputValue("");
     setIsLoading(true);
     setError(null);
+    setInsufficientTokens(false);
 
     try {
       const response = await sendMessageToCoach(messageText, userId);
@@ -69,15 +79,64 @@ export default function AiCoachPage() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMessage]);
+      
+      // Refresh wallet balance after successful token deduction
+      await fetchWallet();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get response from AI Coach");
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "Sorry, I encountered an error. Please try again.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      // Handle specific error types
+      if (err && typeof err === "object" && "status" in err) {
+        const ragError = err as RAGError;
+        
+        if (ragError.status === 402) {
+          // Insufficient tokens
+          setInsufficientTokens(true);
+          setError(ragError.message);
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: "I'd love to help, but you don't have enough tokens to continue this conversation. Please purchase more tokens to keep chatting!",
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+          // Refresh wallet to get latest balance
+          await fetchWallet();
+        } else if (ragError.status === 401) {
+          // Authentication error
+          setError(ragError.message);
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: "Your session has expired. Please sign in again to continue.",
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+          // Redirect to login after a short delay
+          setTimeout(() => {
+            router.push("/login");
+          }, 2000);
+        } else {
+          // Other errors
+          setError(ragError.message);
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: "Sorry, I encountered an error. Please try again.",
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+        }
+      } else {
+        // Generic error
+        const errorMsg = err instanceof Error ? err.message : "Failed to get response from AI Coach";
+        setError(errorMsg);
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: "Sorry, I encountered an error. Please try again.",
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -104,7 +163,7 @@ export default function AiCoachPage() {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-6 border-b border-white/10">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#3b82f6] flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-lg bg-[#5b21b6] flex items-center justify-center flex-shrink-0 shadow-[0_0_18px_rgba(91,33,182,0.35)]">
             <Zap className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -119,14 +178,55 @@ export default function AiCoachPage() {
 
         {/* Status Buttons */}
         <div className="flex flex-wrap gap-2 sm:flex-nowrap">
-          <div className="px-3 py-1.5 bg-[#3b82f6] text-white text-xs sm:text-sm font-medium rounded-md whitespace-nowrap">
+          <div className="px-3 py-1.5 bg-[#5b21b6] text-white text-xs sm:text-sm font-medium rounded-md whitespace-nowrap">
             Remembers your context
           </div>
           <div className="px-3 py-1.5 bg-[#10b981] text-white text-xs sm:text-sm font-medium rounded-md whitespace-nowrap">
             Active
           </div>
+          {/* Token Balance */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 text-white text-xs sm:text-sm font-medium rounded-md whitespace-nowrap">
+            <Coins className="w-3.5 h-3.5 text-primary-soft" />
+            <span>{balance} tokens</span>
+          </div>
         </div>
       </div>
+
+      {/* Insufficient Tokens Banner */}
+      {insufficientTokens && (
+        <Card className="mt-4 p-4 bg-yellow-500/10 border-yellow-500/30">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-yellow-400 font-medium text-sm mb-2">
+                Insufficient Tokens
+              </p>
+              <p className="text-yellow-400/80 text-sm mb-3">
+                You need at least 1 token to use the AI Coach. Each message costs 1 token.
+              </p>
+              <Link href="/billing">
+                <Button
+                  size="sm"
+                  className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 border-yellow-500/30"
+                >
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Purchase Tokens
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Error Banner (for non-token errors) */}
+      {error && !insufficientTokens && (
+        <Card className="mt-4 p-4 bg-red-500/10 border-red-500/30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        </Card>
+      )}
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-1 py-6 space-y-6">
@@ -138,12 +238,12 @@ export default function AiCoachPage() {
             }`}
           >
             {/* Avatar */}
-            <div
-              className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                message.role === "assistant"
-                  ? "bg-white"
-                  : "bg-[#3b82f6]"
-              }`}
+              <div
+                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  message.role === "assistant"
+                    ? "bg-white"
+                    : "bg-[#5b21b6]"
+                }`}
             >
               {message.role === "assistant" ? (
                 <Bot className="w-4 h-4 sm:w-5 sm:h-5 text-[#0f1012]" />
@@ -160,7 +260,7 @@ export default function AiCoachPage() {
                 className={`rounded-2xl px-4 py-3 ${
                   message.role === "assistant"
                     ? "bg-[#1f1f23] text-white"
-                    : "bg-[#3b82f6] text-white"
+                    : "bg-[#5b21b6] text-white"
                 }`}
               >
                 <p className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap">
@@ -201,13 +301,13 @@ export default function AiCoachPage() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Ask your coach anything... (e.g., 'Help me prepare for a system design interview')"
-              className="w-full bg-[#141416] border-white/10 rounded-xl px-4 py-3 text-sm sm:text-base placeholder:text-white/40 focus:ring-2 focus:ring-[#3b82f6] focus:border-transparent"
+              className="w-full bg-[#141416] border-white/10 rounded-xl px-4 py-3 text-sm sm:text-base placeholder:text-white/40 focus:ring-2 focus:ring-[#6d28d9] focus:border-[#6d28d9]"
             />
           </div>
           <button
             onClick={handleSend}
             disabled={!inputValue.trim() || isLoading}
-            className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#3b82f6] text-white flex items-center justify-center hover:bg-[#2563eb] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+            className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#5b21b6] text-white flex items-center justify-center hover:bg-[#4c1d95] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0 shadow-[0_0_18px_rgba(91,33,182,0.35)]"
           >
             {isLoading ? (
               <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />

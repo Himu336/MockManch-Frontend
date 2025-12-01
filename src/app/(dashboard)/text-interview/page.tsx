@@ -12,11 +12,28 @@ import {
   submitAnswer,
   getInterviewAnalysis,
   getInterviewStatus,
+  recordSession,
   type CreateInterviewRequest,
   type QuestionResponse,
   type InterviewAnalysis,
+  type ServiceError,
 } from "../../../lib/api";
-import { Play, Lightbulb, CheckCircle2, Loader2 } from "lucide-react";
+import { 
+  Play, 
+  Lightbulb, 
+  CheckCircle2, 
+  Loader2, 
+  AlertCircle, 
+  Coins, 
+  CreditCard,
+  BookOpen,
+  Target,
+  Info,
+} from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useWallet } from "@/hooks/useWallet";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type InterviewState = "config" | "question" | "results";
 
@@ -40,6 +57,7 @@ export default function TextInterviewPage() {
   const [answers, setAnswers] = useState<AnswerState>({});
   const [analysis, setAnalysis] = useState<InterviewAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [insufficientTokens, setInsufficientTokens] = useState(false);
 
   const [form, setForm] = useState<ConfigForm>({
     job_role: "",
@@ -49,8 +67,10 @@ export default function TextInterviewPage() {
     interview_type: "Behavioral",
   });
 
-  // TODO: Replace with actual user ID from auth/session
-  const userId = "user123";
+  const { user } = useAuth();
+  const { balance, fetchWallet } = useWallet();
+  const router = useRouter();
+  const userId = user?.id || "";
 
   const handleConfigChange = (
     field: keyof ConfigForm,
@@ -62,6 +82,7 @@ export default function TextInterviewPage() {
   const handleStartInterview = async () => {
     setLoading(true);
     setError(null);
+    setInsufficientTokens(false);
 
     try {
       const request: CreateInterviewRequest = {
@@ -116,8 +137,31 @@ export default function TextInterviewPage() {
       
       setCurrentQuestion(question);
       setState("question");
+      
+      // Refresh wallet balance after successful token deduction
+      await fetchWallet();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start interview");
+      // Handle specific error types
+      if (err && typeof err === "object" && "status" in err) {
+        const serviceError = err as ServiceError;
+        
+        if (serviceError.status === 402) {
+          // Insufficient tokens
+          setInsufficientTokens(true);
+          setError(serviceError.message);
+          await fetchWallet();
+        } else if (serviceError.status === 401) {
+          // Authentication error
+          setError(serviceError.message);
+          setTimeout(() => {
+            router.push("/login");
+          }, 2000);
+        } else {
+          setError(serviceError.message);
+        }
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to start interview");
+      }
     } finally {
       setLoading(false);
     }
@@ -213,6 +257,20 @@ export default function TextInterviewPage() {
           const analysisData = await getInterviewAnalysis(sessionId);
           setAnalysis(analysisData);
           setState("results");
+          
+          // Record the session in dashboard
+          try {
+            await recordSession({
+              user_id: userId,
+              session_id: sessionId,
+              interview_type: "text",
+              job_role: form.job_role,
+              ...(form.company.trim() && { company: form.company }),
+            });
+          } catch (recordError) {
+            console.error("Failed to record session:", recordError);
+            // Don't show error to user as this is a background operation
+          }
         } else {
           // Some other error, throw it
           throw questionError;
@@ -283,7 +341,32 @@ export default function TextInterviewPage() {
             </p>
           </div>
 
-          {error && (
+          {insufficientTokens && (
+            <Card className="p-4 bg-yellow-500/10 border-yellow-500/30">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-yellow-400 font-medium text-sm mb-2">
+                    Insufficient Tokens
+                  </p>
+                  <p className="text-yellow-400/80 text-sm mb-3">
+                    You need at least 5 tokens to start a text interview. Each interview costs 5 tokens.
+                  </p>
+                  <Link href="/billing">
+                    <Button
+                      size="sm"
+                      className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 border-yellow-500/30"
+                    >
+                      <CreditCard className="w-4 h-4 mr-2" />
+                      Purchase Tokens
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {error && !insufficientTokens && (
             <div className="bg-red-500/20 border border-red-500/30 text-red-400 rounded-md p-3 text-sm">
               {error}
             </div>
@@ -381,6 +464,98 @@ export default function TextInterviewPage() {
               )}
             </Button>
           </div>
+
+          {/* Guide Section */}
+          <div className="mt-6 pt-6 border-t border-white/10">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-blue-500/20 rounded-lg">
+                <BookOpen className="w-5 h-5 text-blue-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-white">Quick Guide</h3>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Configuration Tips */}
+              <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Target className="w-4 h-4 text-blue-400" />
+                  <h4 className="text-white font-semibold text-sm">Configuration Tips</h4>
+                </div>
+                <ul className="space-y-2">
+                  <li className="flex items-start gap-2 text-white/70 text-xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
+                    <span>Be specific with your job role to get more relevant questions</span>
+                  </li>
+                  <li className="flex items-start gap-2 text-white/70 text-xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
+                    <span>Include job description for questions tailored to the position</span>
+                  </li>
+                  <li className="flex items-start gap-2 text-white/70 text-xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
+                    <span>Select experience level matching your background for appropriate difficulty</span>
+                  </li>
+                  <li className="flex items-start gap-2 text-white/70 text-xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
+                    <span>Choose Mixed interview type for comprehensive practice across different areas</span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Best Practices */}
+              <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Lightbulb className="w-4 h-4 text-purple-400" />
+                  <h4 className="text-white font-semibold text-sm">Best Practices</h4>
+                </div>
+                <ul className="space-y-2">
+                  <li className="flex items-start gap-2 text-white/70 text-xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 mt-0.5 flex-shrink-0" />
+                    <span>Take your time to think before writing your answers</span>
+                  </li>
+                  <li className="flex items-start gap-2 text-white/70 text-xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 mt-0.5 flex-shrink-0" />
+                    <span>Use the STAR method (Situation, Task, Action, Result) for behavioral questions</span>
+                  </li>
+                  <li className="flex items-start gap-2 text-white/70 text-xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 mt-0.5 flex-shrink-0" />
+                    <span>Be concise but comprehensive - aim for 150-300 words per answer</span>
+                  </li>
+                  <li className="flex items-start gap-2 text-white/70 text-xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 mt-0.5 flex-shrink-0" />
+                    <span>Review the hints provided to guide your response structure</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Important Notes */}
+            <div className="mt-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-yellow-400 font-semibold text-sm mb-1">Important Notes</h4>
+                  <ul className="space-y-1.5 text-white/70 text-xs">
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-400 mt-1">•</span>
+                      <span>Each interview session costs 5 tokens. Ensure you have sufficient balance before starting.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-400 mt-1">•</span>
+                      <span>You can review and edit your answers before submitting each question.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-400 mt-1">•</span>
+                      <span>Take advantage of the word count indicator to ensure comprehensive answers.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-400 mt-1">•</span>
+                      <span>After completion, review the detailed feedback to identify areas for improvement.</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
         </Card>
       </div>
     );
@@ -437,12 +612,12 @@ export default function TextInterviewPage() {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="bg-[#3b82f6] text-white px-4 py-1.5 rounded-full text-sm font-medium">
+              <div className="bg-[#5b21b6] text-white px-4 py-1.5 rounded-full text-sm font-medium">
                 Question {currentQuestion.data.question_number} of {currentQuestion.data.total_questions}
               </div>
               <div className="flex-1 w-48 h-2 bg-white/10 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-[#3b82f6] transition-all duration-300"
+                  className="h-full bg-[#5b21b6] transition-all duration-300"
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -473,10 +648,10 @@ export default function TextInterviewPage() {
           </div>
 
           {currentQuestion.data.current_question.hint && getHintText(currentQuestion.data.current_question.hint) && (
-            <div className="bg-[#1e3a8a]/30 border border-[#3b82f6]/30 rounded-lg p-4">
+            <div className="bg-[#4c1d95]/30 border border-[#6d28d9]/30 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
-                <Lightbulb className="w-5 h-5 text-[#60a5fa]" />
-                <span className="font-semibold text-[#60a5fa]">Hint</span>
+                <Lightbulb className="w-5 h-5 text-[#a78bfa]" />
+                <span className="font-semibold text-[#a78bfa]">Hint</span>
               </div>
               <p className="text-white/80 text-sm">
                 {getHintText(currentQuestion.data.current_question.hint)}

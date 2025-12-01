@@ -20,9 +20,10 @@ export default function Button({
   };
 
   const variants = {
-    default: "bg-accent-blue text-white hover:brightness-95",
+    default:
+      "bg-primary-ui text-white hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary-soft",
     outline:
-      "border border-white/20 text-white hover:bg-white/10 backdrop-blur-sm",
+      "border border-white/20 text-white hover:border-primary-light hover:text-primary-soft backdrop-blur-sm",
     ghost: "text-white hover:bg-white/10",
   };
 

@@ -13,7 +13,8 @@ import AgoraRTC from "agora-rtc-sdk-ng";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
 import clsx from "clsx";
-import { Circle, Clock, Copy, Crown, ListChecks, Mic, MicOff, Settings, Users, Video, VideoOff } from "lucide-react";
+import { Circle, Clock, Copy, Crown, Mic, MicOff, Settings, Users, Video, VideoOff } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * VideoRoomClient
@@ -41,6 +42,7 @@ export default function VideoRoomClient({
   roomId,
   hostId,
 }: Props) {
+  const { user } = useAuth();
   // basic quick validation
   const missing = !channel || !token || !appId;
 
@@ -324,7 +326,7 @@ export default function VideoRoomClient({
     if (uid) {
       list.push({
         id: `local-${uid}`,
-        label: formatDisplayName(uid),
+        label: formatDisplayName(uid, user),
         role: hostId && uid === hostId ? "Host" : "Participant",
         isHost: Boolean(hostId && uid === hostId),
         isLocal: true,
@@ -337,7 +339,7 @@ export default function VideoRoomClient({
       const id = String(rUid);
       list.push({
         id,
-        label: formatDisplayName(id),
+        label: formatDisplayName(id, null),
         role: hostId && id === hostId ? "Host" : "Participant",
         isHost: Boolean(hostId && id === hostId),
         isLocal: false,
@@ -347,14 +349,14 @@ export default function VideoRoomClient({
       });
     });
     return list;
-  }, [remoteEntries, uid, hostId, micOn, camOn, joined]);
+  }, [remoteEntries, uid, hostId, micOn, camOn, joined, user]);
 
   const stageTiles = useMemo(() => {
     const tiles: StageTileDescriptor[] = [];
     if (uid) {
       tiles.push({
         key: `local-${uid}`,
-        label: formatDisplayName(uid),
+        label: formatDisplayName(uid, user),
         role: hostId && uid === hostId ? "Host" : "Participant",
         isHost: Boolean(hostId && uid === hostId),
         isLocal: true,
@@ -367,7 +369,7 @@ export default function VideoRoomClient({
       const id = String(rUid);
       tiles.push({
         key: id,
-        label: formatDisplayName(id),
+        label: formatDisplayName(id, null),
         role: hostId && id === hostId ? "Host" : "Participant",
         isHost: Boolean(hostId && id === hostId),
         isLocal: false,
@@ -377,17 +379,11 @@ export default function VideoRoomClient({
       });
     });
     return tiles;
-  }, [remoteEntries, uid, hostId, camOn, micOn]);
+  }, [remoteEntries, uid, hostId, camOn, micOn, user]);
 
   const roomCode = roomId || channel;
-  const sessionTitle = "Panel Interview Practice";
+  const sessionTitle = "Group Practice Session";
   const displayCode = roomCode || "Unavailable";
-  const sessionMeta = {
-    type: "Panel Interview",
-    duration: "45:00",
-    questionsLeft: 3,
-    agenda: "Behavioral Round",
-  };
   const liveState = joined ? "Live" : loading ? "Connecting" : "Preparing";
 
   async function handleCopyRoomCode() {
@@ -522,19 +518,6 @@ export default function VideoRoomClient({
             </div>
           </Card>
 
-          <Card className="space-y-4 border border-white/5 p-4">
-            <h3 className="text-lg font-semibold text-white">Session Info</h3>
-            <div className="space-y-3 text-sm">
-              <InfoRow icon={<Video className="h-4 w-4 text-white/60" />} label="Type" value={sessionMeta.type} />
-              <InfoRow icon={<Clock className="h-4 w-4 text-white/60" />} label="Duration" value={sessionMeta.duration} />
-              <InfoRow
-                icon={<ListChecks className="h-4 w-4 text-white/60" />}
-                label="Questions left"
-                value={String(sessionMeta.questionsLeft)}
-              />
-              <InfoRow icon={<Users className="h-4 w-4 text-white/60" />} label="Agenda" value={sessionMeta.agenda} />
-            </div>
-          </Card>
         </div>
       </div>
     </div>
@@ -695,7 +678,20 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
-function formatDisplayName(value?: string) {
+function formatDisplayName(value?: string, user?: { id?: string; fullName?: string; email?: string } | null) {
+  // If we have user info and this is the current user, use their name
+  if (user && user.id && value === user.id) {
+    if (user.fullName) return user.fullName;
+    if (user.email) {
+      // Use email prefix (part before @) as fallback
+      const emailPrefix = user.email.split("@")[0];
+      if (emailPrefix) {
+        return emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
+      }
+    }
+  }
+  
+  // Fallback to formatting the uid string
   if (!value) return "Guest";
   return value
     .split(/[-_]/)

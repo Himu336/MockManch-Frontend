@@ -12,7 +12,7 @@ export default function Select({
       <select
         className={clsx(
           "w-full bg-[#141416] border border-white/10 rounded-md px-4 py-2 pr-10",
-          "text-white focus:outline-none focus:ring-2 focus:ring-[#3b82f6]",
+          "text-white focus:outline-none focus:ring-2 focus:ring-primary-light",
           "transition appearance-none cursor-pointer",
           className
         )}

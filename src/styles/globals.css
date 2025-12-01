@@ -2,7 +2,11 @@
 
 /* Custom colors */
 @theme {
-  --color-accent-blue: #3b82f6;
+  --color-primary-ui: #5b21b6;
+  --color-primary-hover: #4c1d95;
+  --color-primary-light: #6d28d9;
+  --color-primary-soft: #a78bfa;
+  --color-accent-blue: #5b21b6; /* backwards compatibility */
 }
 
 /* Force dark mode */
@@ -40,4 +44,49 @@ body {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+.caption-wave-bar {
+  animation-name: captionWave;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  transform-origin: bottom;
+}
+
+@keyframes captionWave {
+  0% {
+    transform: scaleY(0.4);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+  100% {
+    transform: scaleY(0.4);
+  }
+}
+
+/* Scale utility */
+.scale-102 {
+  transform: scale(1.02);
+}
+
+/* Avatar hover effect when parent button is hovered */
+.group:hover .group-hover-avatar > * {
+  transform: scale(1.02);
+}
+
+/* Fade and scale animation */
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-fade-in-scale {
+  animation: fadeInScale 200ms ease-out;
 }

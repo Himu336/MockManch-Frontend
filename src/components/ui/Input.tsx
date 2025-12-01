@@ -9,7 +9,7 @@ export default function Input({
     <input
       className={clsx(
         "w-full bg-[#141416] border border-white/10 rounded-md px-4 py-2",
-        "placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-accent-blue",
+        "placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary-light focus:border-primary-light",
         "transition",
         className
       )}
