@@ -2,10 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import Card from "@/components/ui/Card";
+import { setAuthTokens } from "@/lib/api";
 
 interface CallbackClientProps {
   errorParam: string | null;
@@ -19,7 +19,6 @@ export default function CallbackClient({
   code,
 }: CallbackClientProps) {
   const router = useRouter();
-  const { verifyOAuthCallback } = useAuth();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
 
@@ -45,18 +44,13 @@ export default function CallbackClient({
             return;
           }
 
-          // Verify with backend using the session access token
-          const result = await verifyOAuthCallback(session.access_token);
-          
-          if (result.success) {
-            setStatus("success");
-            setTimeout(() => {
-              router.push("/dashboard");
-            }, 1500);
-          } else {
-            setError(result.error || "Failed to verify OAuth session");
-            setStatus("error");
-          }
+          // Sync tokens for backend API compatibility
+          setAuthTokens(session.access_token, session.refresh_token || "");
+
+          setStatus("success");
+          setTimeout(() => {
+            router.push("/dashboard");
+          }, 1500);
           return;
         }
 
@@ -76,19 +70,14 @@ export default function CallbackClient({
           return;
         }
 
-        // Verify with backend using the session access token
-        const result = await verifyOAuthCallback(session.access_token);
-        
-        if (result.success) {
-          setStatus("success");
-          // Redirect to dashboard after a brief delay
-          setTimeout(() => {
-            router.push("/dashboard");
-          }, 1500);
-        } else {
-          setError(result.error || "Failed to verify OAuth session");
-          setStatus("error");
-        }
+        // Sync tokens for backend API compatibility
+        setAuthTokens(session.access_token, session.refresh_token || "");
+
+        setStatus("success");
+        // Redirect to dashboard after a brief delay
+        setTimeout(() => {
+          router.push("/dashboard");
+        }, 1500);
       } catch (err) {
         console.error("Error handling OAuth callback:", err);
         setError(
@@ -99,7 +88,7 @@ export default function CallbackClient({
     }
 
     handleCallback();
-  }, [router, code, errorParam, errorDescription, verifyOAuthCallback]);
+  }, [router, code, errorParam, errorDescription]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-950/20 via-purple-950/20 to-black p-4">

@@ -1,21 +1,17 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import type { User as SupabaseUser, Session } from "@supabase/supabase-js";
 import {
-  signIn as apiSignIn,
-  signUp as apiSignUp,
-  signOut as apiSignOut,
-  getCurrentUser,
-  refreshToken,
-  updateProfile as apiUpdateProfile,
-  getGoogleOAuthUrl,
-  verifyOAuthSession,
   type User,
   type SignInRequest,
   type SignUpRequest,
   type UpdateProfileRequest,
-  getAuthToken,
+  updateProfile as apiUpdateProfile,
+  setAuthTokens,
+  clearAuthTokens,
 } from "@/lib/api";
 
 type AuthContextType = {
@@ -25,7 +21,6 @@ type AuthContextType = {
   signIn: (credentials: SignInRequest) => Promise<{ success: boolean; error?: string }>;
   signUp: (data: SignUpRequest) => Promise<{ success: boolean; error?: string }>;
   signInWithGoogle: () => Promise<void>;
-  verifyOAuthCallback: (accessToken: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   updateProfile: (data: UpdateProfileRequest) => Promise<{ success: boolean; error?: string }>;
   refreshUser: () => Promise<void>;
@@ -33,30 +28,53 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function mapSupabaseUserToAppUser(supabaseUser: SupabaseUser | null): User | null {
+  if (!supabaseUser) return null;
+
+  const metadata = (supabaseUser.user_metadata || {}) as Record<string, any>;
+
+  return {
+    id: supabaseUser.id,
+    email: supabaseUser.email || "",
+    fullName: metadata.fullName || metadata.full_name || "",
+    avatarUrl: metadata.avatarUrl || metadata.avatar_url || "",
+    phoneNumber: metadata.phoneNumber || metadata.phone_number || "",
+    bio: metadata.bio || "",
+    emailVerified: !!supabaseUser.email_confirmed_at,
+    createdAt: supabaseUser.created_at || undefined,
+  };
+}
+
+function syncSessionTokens(session: Session | null) {
+  if (session && session.access_token) {
+    // Mirror Supabase tokens into our existing token storage for backend API compatibility
+    setAuthTokens(session.access_token, session.refresh_token || "");
+  } else {
+    clearAuthTokens();
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname();
 
-  const fetchUser = useCallback(async () => {
+  const loadInitialUser = useCallback(async () => {
     try {
-      const token = getAuthToken();
-      if (!token) {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) {
+        console.error("Error getting Supabase user:", error);
         setUser(null);
-        setLoading(false);
-        return;
+      } else {
+        setUser(mapSupabaseUserToAppUser(data.user));
       }
 
-      const response = await getCurrentUser();
-      if (response.success && response.data) {
-        setUser(response.data);
-      } else {
-        setUser(null);
-      }
-    } catch (error) {
-      console.error("Error fetching user:", error);
+      const { data: sessionData } = await supabase.auth.getSession();
+      syncSessionTokens(sessionData.session ?? null);
+    } catch (err) {
+      console.error("Error initializing auth state:", err);
       setUser(null);
+      clearAuthTokens();
     } finally {
       setLoading(false);
     }
@@ -64,36 +82,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize auth state on mount
   useEffect(() => {
-    fetchUser();
-  }, [fetchUser]);
+    loadInitialUser();
 
-  // Auto-refresh token before expiration
-  useEffect(() => {
-    const token = getAuthToken();
-    if (!token) return;
+    // Subscribe to auth state changes so reloads and other tab actions stay in sync
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      syncSessionTokens(session);
 
-    // Refresh token every 14 minutes (tokens typically last 15 minutes)
-    const interval = setInterval(async () => {
-      try {
-        await refreshToken();
-      } catch (error) {
-        console.error("Error refreshing token:", error);
+      if (!session) {
+        setUser(null);
+        return;
       }
-    }, 14 * 60 * 1000);
 
-    return () => clearInterval(interval);
-  }, [user]);
+      // When session changes, fetch the latest user
+      supabase.auth
+        .getUser()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("Error getting Supabase user on auth change:", error);
+            setUser(null);
+          } else {
+            setUser(mapSupabaseUserToAppUser(data.user));
+          }
+        })
+        .catch((err) => {
+          console.error("Error during auth state change handling:", err);
+          setUser(null);
+        });
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [loadInitialUser]);
 
   const handleSignIn = useCallback(
     async (credentials: SignInRequest) => {
       try {
-        const response = await apiSignIn(credentials);
-        if (response.success && response.data) {
-          setUser(response.data.user);
-          return { success: true };
-        } else {
-          return { success: false, error: response.error || "Sign in failed" };
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: credentials.email,
+          password: credentials.password,
+        });
+
+        if (error) {
+          return { success: false, error: error.message || "Sign in failed" };
         }
+
+        syncSessionTokens(data.session ?? null);
+        setUser(mapSupabaseUserToAppUser(data.user));
+        return { success: true };
       } catch (error) {
         return {
           success: false,
@@ -107,13 +145,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const handleSignUp = useCallback(
     async (data: SignUpRequest) => {
       try {
-        const response = await apiSignUp(data);
-        if (response.success && response.data) {
-          setUser(response.data.user);
-          return { success: true };
-        } else {
-          return { success: false, error: response.error || "Sign up failed" };
+        const { data: signUpData, error } = await supabase.auth.signUp({
+          email: data.email,
+          password: data.password,
+          options: {
+            data: {
+              fullName: data.fullName,
+              phoneNumber: data.phoneNumber,
+            },
+          },
+        });
+
+        if (error) {
+          return { success: false, error: error.message || "Sign up failed" };
         }
+
+        syncSessionTokens(signUpData.session ?? null);
+        setUser(mapSupabaseUserToAppUser(signUpData.user));
+        return { success: true };
       } catch (error) {
         return {
           success: false,
@@ -126,10 +175,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleSignOut = useCallback(async () => {
     try {
-      await apiSignOut();
-    } catch (error) {
-      console.error("Error signing out:", error);
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("Error signing out from Supabase:", error);
+      }
     } finally {
+      clearAuthTokens();
       setUser(null);
       router.push("/login");
     }
@@ -159,49 +210,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const handleRefreshUser = useCallback(async () => {
-    await fetchUser();
-  }, [fetchUser]);
+    await loadInitialUser();
+  }, [loadInitialUser]);
 
   const handleSignInWithGoogle = useCallback(async () => {
     try {
       const callbackUrl = `${window.location.origin}/auth/callback`;
-      const response = await getGoogleOAuthUrl(callbackUrl);
-      
-      if (response.success && response.data?.url) {
-        // Redirect to Google OAuth URL
-        window.location.href = response.data.url;
-      } else {
-        console.error("Failed to get OAuth URL:", response.error);
-        throw new Error(response.error || "Failed to initiate Google sign-in");
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: callbackUrl,
+        },
+      });
+
+      if (error) {
+        console.error("Failed to initiate Google sign-in:", error);
+        throw new Error(error.message || "Failed to initiate Google sign-in");
       }
     } catch (error) {
       console.error("Error initiating Google sign-in:", error);
       throw error;
     }
   }, []);
-
-  const handleVerifyOAuthCallback = useCallback(
-    async (accessToken: string) => {
-      try {
-        const response = await verifyOAuthSession(accessToken);
-        if (response.success && response.data) {
-          setUser(response.data.user);
-          return { success: true };
-        } else {
-          return {
-            success: false,
-            error: response.error || "OAuth verification failed",
-          };
-        }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : "OAuth verification failed",
-        };
-      }
-    },
-    []
-  );
 
   const value: AuthContextType = {
     user,
@@ -210,7 +240,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn: handleSignIn,
     signUp: handleSignUp,
     signInWithGoogle: handleSignInWithGoogle,
-    verifyOAuthCallback: handleVerifyOAuthCallback,
     signOut: handleSignOut,
     updateProfile: handleUpdateProfile,
     refreshUser: handleRefreshUser,

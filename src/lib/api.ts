@@ -310,7 +310,10 @@ export async function createInterview(
 export async function getCurrentQuestion(
   sessionId: string
 ): Promise<QuestionResponse> {
-  const res = await fetch(`${BASE}/api/v1/interview/${sessionId}/question`);
+  const res = await fetch(`${BASE}/api/v1/interview/${sessionId}/question`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
 
   if (!res.ok) {
     const text = await res.text();
@@ -329,7 +332,7 @@ export async function submitAnswer(
 ): Promise<SubmitAnswerResponse> {
   const res = await fetch(`${BASE}/api/v1/interview/${sessionId}/answer`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
 
@@ -346,7 +349,10 @@ export async function submitAnswer(
 export async function getInterviewAnalysis(
   sessionId: string
 ): Promise<InterviewAnalysis> {
-  const res = await fetch(`${BASE}/api/v1/interview/${sessionId}/analysis`);
+  const res = await fetch(`${BASE}/api/v1/interview/${sessionId}/analysis`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
 
   if (!res.ok) {
     const text = await res.text();
@@ -361,7 +367,10 @@ export async function getInterviewAnalysis(
 export async function getInterviewStatus(
   sessionId: string
 ): Promise<InterviewStatus> {
-  const res = await fetch(`${BASE}/api/v1/interview/${sessionId}/status`);
+  const res = await fetch(`${BASE}/api/v1/interview/${sessionId}/status`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
 
   if (!res.ok) {
     const text = await res.text();
@@ -486,7 +495,10 @@ export async function createVoiceInterview(
 export async function getVoiceInterviewState(
   sessionId: string
 ): Promise<{ success: boolean; data: VoiceInterviewState }> {
-  const res = await fetch(`${BASE}/api/v1/voice-interview/${sessionId}/state`);
+  const res = await fetch(`${BASE}/api/v1/voice-interview/${sessionId}/state`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
 
   if (!res.ok) {
     const text = await res.text();
@@ -501,7 +513,10 @@ export async function getVoiceInterviewState(
 export async function getVoiceInterviewAnalysis(
   sessionId: string
 ): Promise<{ success: boolean; data: VoiceInterviewAnalysis }> {
-  const res = await fetch(`${BASE}/api/v1/voice-interview/${sessionId}/analysis`);
+  const res = await fetch(`${BASE}/api/v1/voice-interview/${sessionId}/analysis`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
 
   if (!res.ok) {
     const text = await res.text();
@@ -530,7 +545,10 @@ export async function getVoiceInterviewStatus(
     completed_at: string | null;
   };
 }> {
-  const res = await fetch(`${BASE}/api/v1/voice-interview/${sessionId}/status`);
+  const res = await fetch(`${BASE}/api/v1/voice-interview/${sessionId}/status`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
 
   if (!res.ok) {
     const text = await res.text();

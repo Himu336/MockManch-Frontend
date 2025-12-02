@@ -1,6 +1,7 @@
 import "../styles/globals.css";
 import React from "react";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { WalletProvider } from "@/contexts/WalletContext";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -29,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-bg text-white antialiased">
         <AuthProvider>
-          {children}
+          <WalletProvider>{children}</WalletProvider>
         </AuthProvider>
       </body>
     </html>

@@ -49,10 +49,10 @@ const DashboardLayoutContent = memo(function DashboardLayoutContent({
   };
 
   return (
-    <div className="min-h-screen flex bg-bg">
+    <div className="h-screen flex bg-bg overflow-hidden">
       <aside
         className={`
-          bg-[#111214] border-r border-white/5
+          bg-[#111214] border-r border-white/5 h-full
           transition-all duration-300 ease-in-out
           ${isSidebarCollapsed ? "w-20" : "w-72"}
         `}
@@ -63,7 +63,7 @@ const DashboardLayoutContent = memo(function DashboardLayoutContent({
         />
       </aside>
 
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 h-full p-8 overflow-y-auto">
         {children}
       </main>
     </div>
